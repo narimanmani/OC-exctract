@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -273,13 +273,36 @@ def furtherCrawlCommits(
     return output_path
 
 
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    """Return ``value`` as a string when possible.
+
+    The service mapping CSVs occasionally contain numeric columns which Pandas
+    will load as ``float`` objects.  The pipeline expects textual values for the
+    project, service name, and path prefix columns, so we coerce them to
+    strings while gracefully handling missing data.  Returning ``None`` allows
+    callers to decide how to treat absent values.
+    """
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else None
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    return str(value)
+
+
 def _load_service_mapping(path: str | Path) -> Dict[str, List[Tuple[str, str]]]:
     df = pd.read_csv(path)
     mapping: Dict[str, List[Tuple[str, str]]] = {}
     for row in df.itertuples(index=False):
-        project = getattr(row, "project")
-        service_name = getattr(row, "service_name")
-        path_prefix = getattr(row, "path_prefix", "") or ""
+        project = _coerce_optional_str(getattr(row, "project"))
+        service_name = _coerce_optional_str(getattr(row, "service_name"))
+        if project is None or service_name is None:
+            # Skip rows missing the required identifiers.
+            continue
+        path_prefix = _coerce_optional_str(getattr(row, "path_prefix", "")) or ""
         mapping.setdefault(project, []).append((path_prefix, service_name))
     # Sort prefixes so that longer (more specific) prefixes are matched first.
     for project, entries in mapping.items():
