@@ -56,6 +56,10 @@ jobs:
             --end-date ${{ github.event.inputs.end_date }} \
             --output-dir artifacts | tee artifacts/oc_pipeline.log
           echo "::endgroup::"
+          if [ -f artifacts/oc_weekly_summary.csv ]; then
+            echo "::notice::Weekly OC summary saved to artifacts/oc_weekly_summary.csv"
+          fi
+          ls -1 artifacts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

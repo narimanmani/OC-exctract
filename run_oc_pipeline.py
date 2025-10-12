@@ -73,7 +73,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     commits_service_dir.mkdir(parents=True, exist_ok=True)
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
-    oc_results = []
+    weekly_results = []
 
     for repo in repo_list:
         print(f"Processing repository: {repo}")
@@ -82,7 +82,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
         commit_csv = commits_dir / f"{repo_safe}_commits.csv"
         commit_full_csv = commits_full_dir / f"{repo_safe}_commits_full.csv"
         commit_service_csv = commits_service_dir / f"{repo_safe}_commits_with_services.csv"
-        heatmap_csv = heatmap_dir / f"{repo_safe}_heatmap_{args.start_date}_to_{args.end_date}.csv"
 
         print("  Fetching commit list ...")
         try:
@@ -113,23 +112,38 @@ def run_pipeline(args: argparse.Namespace) -> None:
         map_files_to_services(commit_full_df, args.service_mapping, commit_service_csv)
         commit_service_df = pd.read_csv(commit_service_csv)
 
-        print("  Building heatmap ...")
-        makeHeatmapdatasetBetweenDate(repo, commit_service_df, args.start_date, args.end_date, heatmap_csv)
+        print("  Computing weekly OC values ...")
+        overall_start = pd.to_datetime(args.start_date, utc=True)
+        overall_end = pd.to_datetime(args.end_date, utc=True)
+        week_start = overall_start
+        while week_start <= overall_end:
+            week_end = min(week_start + pd.Timedelta(days=6), overall_end)
+            week_start_str = week_start.strftime("%Y-%m-%d")
+            week_end_str = week_end.strftime("%Y-%m-%d")
+            heatmap_csv = heatmap_dir / f"{repo_safe}_heatmap_{week_start_str}_to_{week_end_str}.csv"
 
-        print("  Computing OC value ...")
-        oc_value = compute_oc_value(heatmap_csv)
-        oc_results.append({
-            "project": repo,
-            "start_date": args.start_date,
-            "end_date": args.end_date,
-            "oc_value": oc_value,
-            "heatmap": str(heatmap_csv),
-        })
-        print(f"  OC value: {oc_value:.4f}")
+            makeHeatmapdatasetBetweenDate(repo, commit_service_df, week_start_str, week_end_str, heatmap_csv)
+            oc_value = compute_oc_value(heatmap_csv)
+            weekly_results.append(
+                {
+                    "project": repo,
+                    "week_start": week_start_str,
+                    "week_end": week_end_str,
+                    "oc_value": oc_value,
+                    "heatmap": str(heatmap_csv),
+                }
+            )
+            print(f"    {week_start_str} to {week_end_str}: OC value {oc_value:.4f}")
 
-    summary_path = output_dir / "oc_summary.csv"
-    pd.DataFrame(oc_results).to_csv(summary_path, index=False)
-    print(f"Results written to {summary_path}")
+            week_start = week_end + pd.Timedelta(days=1)
+
+    summary_path = output_dir / "oc_weekly_summary.csv"
+    summary_df = pd.DataFrame(
+        weekly_results,
+        columns=["project", "week_start", "week_end", "oc_value", "heatmap"],
+    )
+    summary_df.to_csv(summary_path, index=False)
+    print(f"Weekly results written to {summary_path}")
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
