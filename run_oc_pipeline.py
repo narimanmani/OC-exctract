@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import List
 
+import requests
+
 import pandas as pd
 
 from organizationalCoupling import (
@@ -41,6 +43,25 @@ def run_pipeline(args: argparse.Namespace) -> None:
     repo_list = load_repo_list(Path(args.repo_list))
     cfg = GithubConfig.from_env()
 
+    print("Checking GitHub API connectivity ...")
+    try:
+        login, remaining, limit = cfg.verify_connection()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        reason = exc.response.reason if exc.response is not None else str(exc)
+        body = exc.response.text if exc.response is not None else ""
+        snippet = " ".join(body.split())[:500]
+        raise RuntimeError(
+            f"GitHub API connection failed: HTTP {status} {reason}. Response snippet: {snippet}"
+        ) from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"GitHub API connection failed: {exc}") from exc
+    else:
+        print(
+            "GitHub API connection established.",
+            f"Authenticated as '{login}' with {remaining}/{limit} core requests remaining.",
+        )
+
     output_dir = Path(args.output_dir)
     commits_dir = output_dir / "commits"
     commits_full_dir = output_dir / "commits_full"
@@ -64,7 +85,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
         heatmap_csv = heatmap_dir / f"{repo_safe}_heatmap_{args.start_date}_to_{args.end_date}.csv"
 
         print("  Fetching commit list ...")
-        getCommitTablebyProject(repo, commit_csv, config=cfg)
+        try:
+            getCommitTablebyProject(repo, commit_csv, config=cfg)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            reason = exc.response.reason if exc.response is not None else str(exc)
+            body = exc.response.text if exc.response is not None else ""
+            snippet = " ".join(body.split())[:500]
+            raise RuntimeError(
+                f"Failed to fetch commit list for {repo}: HTTP {status} {reason}. Response snippet: {snippet}"
+            ) from exc
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Failed to fetch commit list for {repo}: {exc}") from exc
         commit_df = pd.read_csv(commit_csv)
 
         print("  Fetching commit details ...")
