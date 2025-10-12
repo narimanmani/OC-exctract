@@ -1,0 +1,15 @@
+project,service_name,path_prefix
+spinnaker/spinnaker,appengine,appengine/
+spinnaker/spinnaker,clouddriver,clouddriver/
+spinnaker/spinnaker,deck,deck/
+spinnaker/spinnaker,echo,echo/
+spinnaker/spinnaker,fiat,fiat/
+spinnaker/spinnaker,front50,front50/
+spinnaker/spinnaker,gate,gate/
+spinnaker/spinnaker,igor,igor/
+spinnaker/spinnaker,kayenta,kayenta/
+spinnaker/spinnaker,orca,orca/
+spinnaker/spinnaker,rosco,rosco/
+spinnaker/spinnaker,halyard,halyard/
+spinnaker/spinnaker,keel,keel/
+spinnaker/spinnaker,other,
