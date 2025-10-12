@@ -32,11 +32,11 @@ class GithubConfig:
 
     @classmethod
     def from_env(cls) -> "GithubConfig":
-        token = os.getenv("GITHUB_TOKEN")
+        token = os.getenv("MY_PAT")
         if not token:
             raise MissingGithubTokenError(
                 "A GitHub personal access token must be provided via the "
-                "GITHUB_TOKEN environment variable."
+                "MY_PAT environment variable."
             )
         return cls(token=token)
 
@@ -93,7 +93,7 @@ def getCommitTablebyProject(
         Location of the CSV file that will be written.
     config:
         Optional :class:`GithubConfig` instance.  When omitted the
-        configuration is built from the ``GITHUB_TOKEN`` environment
+        configuration is built from the ``MY_PAT`` environment
         variable.
     """
 

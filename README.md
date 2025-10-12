@@ -5,7 +5,7 @@ This repository contains a reproducible pipeline for crawling GitHub repositorie
 ## Prerequisites
 
 1. **Python** 3.9 or newer.
-2. A GitHub personal access token (PAT) with `repo` scope stored in the `GITHUB_TOKEN` environment variable. The pipeline will refuse to run without it.
+2. A GitHub personal access token (PAT) with `repo` scope stored in the `MY_PAT` environment variable. The pipeline will refuse to run without it.
 
 Install the Python dependencies:
 
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 ## Running the Pipeline Locally
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+export MY_PAT=ghp_your_token_here
 python run_oc_pipeline.py \
   --repo-list OldData/filtered_lang_perc.csv \
   --service-mapping EsoccExt/service_mapping.csv \
@@ -40,11 +40,11 @@ The script produces:
 
 ## GitHub Actions Workflow
 
-The workflow defined in `.github/workflows/run-oc-pipeline.yml` can be triggered manually (`workflow_dispatch`). It requires a repository secret named `OC_GITHUB_TOKEN` containing the PAT described above. The workflow uploads the generated OC artifacts for inspection.
+The workflow defined in `.github/workflows/run-oc-pipeline.yml` can be triggered manually (`workflow_dispatch`). It requires a repository secret named `MY_PAT` containing the PAT described above. The workflow uploads the generated OC artifacts for inspection.
 
 To run it:
 
-1. Add the secret `OC_GITHUB_TOKEN` in the repository settings.
+1. Add the secret `MY_PAT` in the repository settings.
 2. Trigger the **Run OC Pipeline** workflow from the *Actions* tab.
 
 ## Notes
