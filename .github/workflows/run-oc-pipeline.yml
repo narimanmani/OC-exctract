@@ -11,10 +11,15 @@ on:
         description: "End date (YYYY-MM-DD)"
         required: true
         default: "2023-06-30"
+      environment_name:
+        description: "GitHub environment that stores the MY_PAT secret"
+        required: false
+        default: "OC"
 
 jobs:
   oc-pipeline:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment_name }}
     env:
       MY_PAT: ${{ secrets.MY_PAT }}
     steps:

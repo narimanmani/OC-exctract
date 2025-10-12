@@ -44,8 +44,8 @@ The workflow defined in `.github/workflows/run-oc-pipeline.yml` can be triggered
 
 To run it:
 
-1. Add the secret `MY_PAT` in the repository settings.
-2. Trigger the **Run OC Pipeline** workflow from the *Actions* tab.
+1. Add the secret `MY_PAT` in the repository settings. You can either store it as a regular repository secret or attach it to a GitHub environment (the workflow defaults to an environment named `OC`).
+2. Trigger the **Run OC Pipeline** workflow from the *Actions* tab. If you are using a differently named environment, supply it via the `environment_name` input when starting the workflow.
 
 ## Notes
 
