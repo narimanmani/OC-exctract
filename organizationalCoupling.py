@@ -30,6 +30,38 @@ class GithubConfig:
     sleep_seconds: float = 1.0
     max_retries: int = 5
 
+    def verify_connection(self) -> Tuple[str, int, int]:
+        """Return information about the authenticated GitHub session.
+
+        The method performs lightweight API calls to make sure the
+        provided token is valid and that we can reach the GitHub REST
+        API.  It returns the authenticated login along with the current
+        core rate-limit information so callers can log helpful status
+        messages before attempting the expensive crawling steps.
+        """
+
+        session = _create_session(self)
+        user_response = _github_request(
+            session,
+            "https://api.github.com/user",
+            params=None,
+            max_retries=self.max_retries,
+            sleep_seconds=self.sleep_seconds,
+        )
+        login = user_response.json().get("login", "<unknown>")
+
+        rate_response = _github_request(
+            session,
+            "https://api.github.com/rate_limit",
+            params=None,
+            max_retries=self.max_retries,
+            sleep_seconds=self.sleep_seconds,
+        )
+        core_limits = rate_response.json().get("resources", {}).get("core", {})
+        remaining = int(core_limits.get("remaining", 0))
+        limit = int(core_limits.get("limit", 0))
+        return login, remaining, limit
+
     @classmethod
     def from_env(cls) -> "GithubConfig":
         token = os.getenv("MY_PAT")
