@@ -35,21 +35,27 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
+          echo "::notice::Installing Python dependencies"
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run OC pipeline
         shell: bash
         run: |
-          set -euxo pipefail
-          echo "Starting OC pipeline run from ${{ github.event.inputs.start_date }} to ${{ github.event.inputs.end_date }}"
-          python -u run_oc_pipeline.py \
+          set -euo pipefail
+          echo "::notice::Preparing to run the OC pipeline"
+          echo "Start date: ${{ github.event.inputs.start_date }}"
+          echo "End date:   ${{ github.event.inputs.end_date }}"
+          mkdir -p artifacts
+          echo "::group::OC pipeline live output"
+          stdbuf -oL -eL python -u run_oc_pipeline.py \
             --repo-list OldData/filtered_lang_perc.csv \
             --service-mapping EsoccExt/service_mapping.csv \
             --start-date ${{ github.event.inputs.start_date }} \
             --end-date ${{ github.event.inputs.end_date }} \
-            --output-dir artifacts
+            --output-dir artifacts | tee artifacts/oc_pipeline.log
+          echo "::endgroup::"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
