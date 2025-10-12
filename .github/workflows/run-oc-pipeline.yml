@@ -16,7 +16,7 @@ jobs:
   oc-pipeline:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.OC_GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.MY_PAT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
