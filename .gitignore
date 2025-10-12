@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
+.cache/
+.DS_Store
+EsoccExt/*.csv
+!EsoccExt/service_mapping.csv
+OldData/*.csv
+!OldData/filtered_lang_perc.csv
+outputs/
+artifacts/
