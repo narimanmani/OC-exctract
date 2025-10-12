@@ -86,7 +86,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
         print("  Fetching commit list ...")
         try:
-            getCommitTablebyProject(repo, commit_csv, config=cfg)
+            getCommitTablebyProject(
+                repo,
+                commit_csv,
+                config=cfg,
+                start_date=args.start_date,
+                end_date=args.end_date,
+            )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
             reason = exc.response.reason if exc.response is not None else str(exc)
