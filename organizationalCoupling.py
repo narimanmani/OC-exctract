@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import os
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -109,11 +110,22 @@ def _github_request(
     return response
 
 
+def _format_github_date(date_str: str, *, is_end: bool) -> str:
+    """Convert a ``YYYY-MM-DD`` string into an ISO-8601 timestamp in UTC."""
+
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    if is_end:
+        dt = dt.replace(hour=23, minute=59, second=59)
+    return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def getCommitTablebyProject(
     projectfullname: str,
     updateissuetablename: str | Path,
     *,
     config: Optional[GithubConfig] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> Path:
     """Fetch the list of commits for a project.
 
@@ -127,6 +139,12 @@ def getCommitTablebyProject(
         Optional :class:`GithubConfig` instance.  When omitted the
         configuration is built from the ``MY_PAT`` environment
         variable.
+    start_date:
+        Optional lower bound (inclusive) on commit author dates in
+        ``YYYY-MM-DD`` format.
+    end_date:
+        Optional upper bound (inclusive) on commit author dates in
+        ``YYYY-MM-DD`` format.
     """
 
     cfg = config or GithubConfig.from_env()
@@ -140,6 +158,10 @@ def getCommitTablebyProject(
         writer.writerow(commit_features)
 
         params = {"per_page": 100, "page": 1}
+        if start_date:
+            params["since"] = _format_github_date(start_date, is_end=False)
+        if end_date:
+            params["until"] = _format_github_date(end_date, is_end=True)
         project_url = f"https://api.github.com/repos/{projectfullname}"
         project_info = _github_request(
             session, project_url, max_retries=cfg.max_retries, sleep_seconds=cfg.sleep_seconds
@@ -169,8 +191,6 @@ def getCommitTablebyProject(
                     ]
                 )
             params["page"] += 1
-            time.sleep(cfg.sleep_seconds)
-
     return output_path
 
 
