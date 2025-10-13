@@ -142,8 +142,34 @@ def run_pipeline(args: argparse.Namespace) -> None:
         weekly_results,
         columns=["project", "week_start", "week_end", "oc_value", "heatmap"],
     )
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(summary_path, index=False)
-    print(f"Weekly results written to {summary_path}")
+
+    if summary_path.exists():
+        print(
+            "Weekly results written to",
+            f"{summary_path} ({len(summary_df)} rows)",
+        )
+        if summary_df.empty:
+            print(
+                "No weekly OC values were generated. "
+                "Check the repository list and date range."
+            )
+        else:
+            preview = summary_df.head(10).copy()
+            preview["oc_value"] = preview["oc_value"].map(lambda v: f"{v:.4f}")
+            print("Weekly summary preview (first 10 rows):")
+            print(preview.to_string(index=False))
+            if len(summary_df) > len(preview):
+                print(
+                    "...",
+                    f"({len(summary_df) - len(preview)} additional rows not shown)",
+                )
+    else:
+        print(
+            "Warning: Expected weekly summary file was not created at",
+            summary_path,
+        )
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
