@@ -76,6 +76,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     weekly_results = []
     commit_results = []
+    overall_results = []
 
     for repo in repo_list:
         print(f"Processing repository: {repo}")
@@ -198,6 +199,30 @@ def run_pipeline(args: argparse.Namespace) -> None:
             )
             print(f"    commit {commit_sha}: OC value {oc_value:.4f}")
 
+        print("  Computing overall OC value ...")
+        overall_heatmap_csv = heatmap_dir / f"{repo_safe}_heatmap_{args.start_date}_to_{args.end_date}.csv"
+        makeHeatmapdatasetBetweenDate(
+            repo,
+            commit_service_df,
+            args.start_date,
+            args.end_date,
+            overall_heatmap_csv,
+        )
+        overall_oc_value = compute_oc_value(overall_heatmap_csv)
+        overall_results.append(
+            {
+                "project": repo,
+                "start_date": args.start_date,
+                "end_date": args.end_date,
+                "oc_value": overall_oc_value,
+                "heatmap": str(overall_heatmap_csv),
+            }
+        )
+        print(
+            "    Overall interval",
+            f"{args.start_date} to {args.end_date}: OC value {overall_oc_value:.4f}",
+        )
+
     summary_path = output_dir / "oc_weekly_summary.csv"
     summary_df = pd.DataFrame(
         weekly_results,
@@ -255,6 +280,30 @@ def run_pipeline(args: argparse.Namespace) -> None:
             )
     else:
         print("No per-commit OC values were generated within the selected range.")
+
+    if overall_results:
+        overall_summary_path = output_dir / "oc_summary.csv"
+        overall_summary_df = pd.DataFrame(
+            overall_results,
+            columns=["project", "start_date", "end_date", "oc_value", "heatmap"],
+        )
+        overall_summary_df.to_csv(overall_summary_path, index=False)
+
+        print(
+            "Overall OC results written to",
+            f"{overall_summary_path} ({len(overall_summary_df)} rows)",
+        )
+        preview = overall_summary_df.head(10).copy()
+        preview["oc_value"] = preview["oc_value"].map(lambda v: f"{v:.4f}")
+        print("Overall summary preview (first 10 rows):")
+        print(preview.to_string(index=False))
+        if len(overall_summary_df) > len(preview):
+            print(
+                "...",
+                f"({len(overall_summary_df) - len(preview)} additional rows not shown)",
+            )
+    else:
+        print("No overall OC values were generated.")
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:

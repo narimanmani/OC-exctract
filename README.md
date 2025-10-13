@@ -36,7 +36,9 @@ The script produces:
 * File-level commit data in `artifacts/commits_full/`.
 * Commit/service mappings in `artifacts/commits_with_services/`.
 * Heatmap CSVs in `artifacts/heatmaps/`.
-* An `artifacts/oc_summary.csv` file with the computed OC value for each repository.
+* `artifacts/oc_summary.csv` with the overall OC value for each repository (matching the legacy notebook formula).
+* `artifacts/oc_weekly_summary.csv` with weekly OC values computed from the same heatmaps.
+* `artifacts/oc_commit_summary.csv` with per-commit OC values for additional granularity.
 
 ## GitHub Actions Workflow
 
