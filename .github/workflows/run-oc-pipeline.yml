@@ -56,6 +56,53 @@ jobs:
             --end-date ${{ github.event.inputs.end_date }} \
             --output-dir artifacts | tee artifacts/oc_pipeline.log
           echo "::endgroup::"
+          if [ -f artifacts/oc_weekly_summary.csv ]; then
+            echo "::notice::Weekly OC summary saved to artifacts/oc_weekly_summary.csv"
+          else
+            echo "::error::Weekly OC summary was not generated"
+            echo "Contents of artifacts directory:"
+            ls -al artifacts
+            exit 1
+          fi
+          ls -1 artifacts
+
+      - name: Append weekly OC summary to job summary
+        if: ${{ hashFiles('artifacts/oc_weekly_summary.csv') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pandas as pd
+
+summary_path = Path("artifacts/oc_weekly_summary.csv")
+df = pd.read_csv(summary_path)
+
+if df.empty:
+    body = "_No weekly OC values were generated for the selected date range._\n"
+else:
+    preview_rows = 20
+    df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
+    preview = df.head(preview_rows)
+    table = preview.to_markdown(index=False)
+    if len(df) > len(preview):
+        footer = f"\nShowing first {len(preview)} of {len(df)} rows.\n"
+    else:
+        footer = "\n"
+    body = table + footer
+
+print("Weekly OC summary preview:")
+print(body)
+
+summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
+with summary_file.open("a", encoding="utf-8") as fh:
+    fh.write("## Weekly OC Summary\n\n")
+    fh.write(body)
+PY
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
