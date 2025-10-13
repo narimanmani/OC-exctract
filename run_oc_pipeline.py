@@ -13,6 +13,7 @@ import pandas as pd
 from organizationalCoupling import (
     GithubConfig,
     MissingGithubTokenError,
+    compute_oc_from_heatmap,
     compute_oc_value,
     furtherCrawlCommits,
     getCommitTablebyProject,
@@ -74,6 +75,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     heatmap_dir.mkdir(parents=True, exist_ok=True)
 
     weekly_results = []
+    commit_results = []
 
     for repo in repo_list:
         print(f"Processing repository: {repo}")
@@ -137,6 +139,66 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
             week_start = week_end + pd.Timedelta(days=1)
 
+        if repo.lower() == "spinnaker/spinnaker":
+            print("  Computing per-commit OC values for Spinnaker ...")
+            repo_commits = commit_service_df.copy()
+            repo_commits["author_date"] = pd.to_datetime(
+                repo_commits["author_date"], errors="coerce", utc=True
+            )
+            repo_commits = repo_commits.loc[repo_commits["project"] == repo]
+
+            start = overall_start
+            end = overall_end
+
+            repo_commits = repo_commits.loc[
+                repo_commits["author_date"].between(start, end, inclusive="both")
+                | repo_commits["author_date"].isna()
+            ]
+
+            for commit_sha, group in repo_commits.groupby("commit_sha"):
+                commit_services = sorted(
+                    {
+                        service
+                        for service in group["service"].dropna()
+                        if isinstance(service, str) and service.strip()
+                    }
+                )
+                if commit_services:
+                    heatmap = pd.DataFrame(
+                        0, index=commit_services, columns=commit_services, dtype=int
+                    )
+                    for service in commit_services:
+                        heatmap.loc[service, service] += 1
+                    for idx, service_a in enumerate(commit_services):
+                        for service_b in commit_services[idx + 1 :]:
+                            heatmap.loc[service_a, service_b] += 1
+                            heatmap.loc[service_b, service_a] += 1
+                    oc_value = compute_oc_from_heatmap(heatmap)
+                else:
+                    heatmap = pd.DataFrame()
+                    oc_value = 0.0
+
+                commit_date = group["author_date"].dropna()
+                commit_date_str = (
+                    commit_date.iloc[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if not commit_date.empty
+                    else ""
+                )
+
+                heatmap_csv = heatmap_dir / f"{repo_safe}_commit_{commit_sha}.csv"
+                heatmap.to_csv(heatmap_csv)
+
+                commit_results.append(
+                    {
+                        "project": repo,
+                        "commit_sha": commit_sha,
+                        "author_date": commit_date_str,
+                        "oc_value": oc_value,
+                        "heatmap": str(heatmap_csv),
+                    }
+                )
+                print(f"    commit {commit_sha}: OC value {oc_value:.4f}")
+
     summary_path = output_dir / "oc_weekly_summary.csv"
     summary_df = pd.DataFrame(
         weekly_results,
@@ -170,6 +232,30 @@ def run_pipeline(args: argparse.Namespace) -> None:
             "Warning: Expected weekly summary file was not created at",
             summary_path,
         )
+
+    if commit_results:
+        commit_summary_path = output_dir / "oc_commit_summary.csv"
+        commit_summary_df = pd.DataFrame(
+            commit_results,
+            columns=["project", "commit_sha", "author_date", "oc_value", "heatmap"],
+        )
+        commit_summary_df.to_csv(commit_summary_path, index=False)
+
+        print(
+            "Per-commit results written to",
+            f"{commit_summary_path} ({len(commit_summary_df)} rows)",
+        )
+        preview = commit_summary_df.head(10).copy()
+        preview["oc_value"] = preview["oc_value"].map(lambda v: f"{v:.4f}")
+        print("Per-commit summary preview (first 10 rows):")
+        print(preview.to_string(index=False))
+        if len(commit_summary_df) > len(preview):
+            print(
+                "...",
+                f"({len(commit_summary_df) - len(preview)} additional rows not shown)",
+            )
+    else:
+        print("No per-commit OC values were generated for Spinnaker within the selected range.")
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
