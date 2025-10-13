@@ -346,6 +346,88 @@ def map_files_to_services(
     return output
 
 
+def _extract_author_identifier(value: Any) -> Optional[str]:
+    email = _coerce_optional_str(value)
+    if not email:
+        return None
+    if "@" in email:
+        return email.split("@", 1)[0]
+    return email
+
+
+def _prepare_coupling_dataframe(
+    commit_df: pd.DataFrame,
+    *,
+    project: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.DataFrame:
+    df = commit_df.copy()
+    df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
+    df = df.loc[
+        (df["project"] == project)
+        & df["service"].notna()
+        & (df["author_date"] >= start)
+        & (df["author_date"] <= end)
+    ]
+
+    df = df.copy()
+    df["author"] = df["author_email"].apply(_extract_author_identifier)
+    df = df.loc[df["author"].notna()]
+
+    additions = pd.to_numeric(df.get("additions"), errors="coerce").fillna(0.0)
+    deletions = pd.to_numeric(df.get("deletions"), errors="coerce").fillna(0.0)
+    df["sum"] = additions + deletions
+
+    grouped = (
+        df.groupby(["author_date", "commit_sha", "author", "service"], dropna=False)["sum"]
+        .sum()
+        .reset_index()
+    )
+    return grouped.sort_values(["author", "author_date", "commit_sha"])
+
+
+def _compute_service_coupling(grouped: pd.DataFrame, service_a: str, service_b: str) -> float:
+    if service_a == service_b:
+        return 0.0
+
+    relevant = grouped[grouped["service"].isin({service_a, service_b})]
+    if relevant.empty:
+        return 0.0
+
+    authors_a = set(relevant.loc[relevant["service"] == service_a, "author"])
+    authors_b = set(relevant.loc[relevant["service"] == service_b, "author"])
+    shared_authors = authors_a & authors_b
+    if not shared_authors:
+        return 0.0
+
+    coupling_total = 0.0
+    for author in shared_authors:
+        author_rows = relevant.loc[relevant["author"] == author]
+        author_rows = author_rows.sort_values(["author_date", "commit_sha"])
+        sequence = author_rows["service"].tolist()
+        if len(sequence) <= 1:
+            continue
+
+        switch_count = sum(1 for i in range(len(sequence) - 1) if sequence[i] != sequence[i + 1])
+        if switch_count == 0:
+            continue
+
+        weight_denominator = (len(sequence) - 1) * 2
+        if weight_denominator <= 0:
+            continue
+        weight = switch_count / weight_denominator
+
+        contrib_a = author_rows.loc[author_rows["service"] == service_a, "sum"].sum()
+        contrib_b = author_rows.loc[author_rows["service"] == service_b, "sum"].sum()
+        if contrib_a <= 0 or contrib_b <= 0:
+            continue
+
+        coupling_total += (2 * contrib_a * contrib_b / (contrib_a + contrib_b)) * weight
+
+    return float(coupling_total)
+
+
 def makeHeatmapdatasetBetweenDate(
     project: str,
     commit_df: pd.DataFrame,
@@ -353,31 +435,20 @@ def makeHeatmapdatasetBetweenDate(
     end_date: str,
     output_path: str | Path,
 ) -> Path:
-    df = commit_df.copy()
-    df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
     start = pd.to_datetime(start_date, utc=True)
     end = pd.to_datetime(end_date, utc=True)
-    mask = (
-        (df["project"] == project)
-        & (df["author_date"] >= start)
-        & (df["author_date"] <= end)
-        & df["service"].notna()
+    grouped = _prepare_coupling_dataframe(
+        commit_df, project=project, start=start, end=end
     )
-    df = df.loc[mask, ["commit_sha", "service"]]
 
-    services = sorted(df["service"].unique())
-    heatmap = pd.DataFrame(0, index=services, columns=services, dtype=int)
+    services = sorted(grouped["service"].unique())
+    heatmap = pd.DataFrame(0.0, index=services, columns=services, dtype=float)
 
-    for commit_sha, group in df.groupby("commit_sha"):
-        service_set = sorted(set(group["service"]))
-        if not service_set:
-            continue
-        for service in service_set:
-            heatmap.loc[service, service] += 1
-        for i, service_a in enumerate(service_set):
-            for service_b in service_set[i + 1 :]:
-                heatmap.loc[service_a, service_b] += 1
-                heatmap.loc[service_b, service_a] += 1
+    for i, service_a in enumerate(services):
+        for j, service_b in enumerate(services[i:], start=i):
+            coupling = _compute_service_coupling(grouped, service_a, service_b)
+            heatmap.loc[service_a, service_b] = coupling
+            heatmap.loc[service_b, service_a] = coupling
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
