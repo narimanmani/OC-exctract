@@ -346,6 +346,192 @@ def map_files_to_services(
     return output
 
 
+def _extract_author_identifier(value: Any) -> Optional[str]:
+    email = _coerce_optional_str(value)
+    if not email:
+        return None
+    if "@" in email:
+        return email.split("@", 1)[0]
+    return email
+
+
+def _prepare_coupling_dataframe(
+    commit_df: pd.DataFrame,
+    *,
+    project: str,
+    start: Optional[pd.Timestamp] = None,
+    end: Optional[pd.Timestamp] = None,
+    start_inclusive: bool = True,
+    end_inclusive: bool = True,
+) -> pd.DataFrame:
+    df = commit_df.copy()
+    df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
+    mask = (df["project"] == project) & df["service"].notna()
+    if start is not None:
+        if start_inclusive:
+            mask &= df["author_date"] >= start
+        else:
+            mask &= df["author_date"] > start
+    if end is not None:
+        if end_inclusive:
+            mask &= df["author_date"] <= end
+        else:
+            mask &= df["author_date"] < end
+    df = df.loc[mask]
+
+    df = df.copy()
+    df["author"] = df["author_email"].apply(_extract_author_identifier)
+    df = df.loc[df["author"].notna()]
+
+    additions = pd.to_numeric(df.get("additions"), errors="coerce").fillna(0.0)
+    deletions = pd.to_numeric(df.get("deletions"), errors="coerce").fillna(0.0)
+    df["sum"] = additions + deletions
+
+    grouped = (
+        df.groupby(["author_date", "commit_sha", "author", "service"], dropna=False)["sum"]
+        .sum()
+        .reset_index()
+    )
+    return grouped.sort_values(["author", "author_date", "commit_sha"])
+
+
+def _compute_service_coupling(grouped: pd.DataFrame, service_a: str, service_b: str) -> float:
+    if service_a == service_b:
+        return 0.0
+
+    relevant = grouped[grouped["service"].isin({service_a, service_b})]
+    if relevant.empty:
+        return 0.0
+
+    authors_a = set(relevant.loc[relevant["service"] == service_a, "author"])
+    authors_b = set(relevant.loc[relevant["service"] == service_b, "author"])
+    shared_authors = authors_a & authors_b
+    if not shared_authors:
+        return 0.0
+
+    coupling_total = 0.0
+    for author in shared_authors:
+        author_rows = relevant.loc[relevant["author"] == author]
+        author_rows = author_rows.sort_values(["author_date", "commit_sha"])
+        sequence = author_rows["service"].tolist()
+        if len(sequence) <= 1:
+            continue
+
+        switch_count = sum(1 for i in range(len(sequence) - 1) if sequence[i] != sequence[i + 1])
+        if switch_count == 0:
+            continue
+
+        weight_denominator = (len(sequence) - 1) * 2
+        if weight_denominator <= 0:
+            continue
+        weight = switch_count / weight_denominator
+
+        contrib_a = author_rows.loc[author_rows["service"] == service_a, "sum"].sum()
+        contrib_b = author_rows.loc[author_rows["service"] == service_b, "sum"].sum()
+        if contrib_a <= 0 or contrib_b <= 0:
+            continue
+
+        coupling_total += (2 * contrib_a * contrib_b / (contrib_a + contrib_b)) * weight
+
+    return float(coupling_total)
+
+
+def _compute_coupling_for_pair(
+    commit_df: pd.DataFrame,
+    *,
+    project: str,
+    service_a: str,
+    service_b: str,
+    start: Optional[pd.Timestamp] = None,
+    end: Optional[pd.Timestamp] = None,
+    start_inclusive: bool = True,
+    end_inclusive: bool = True,
+) -> float:
+    grouped = _prepare_coupling_dataframe(
+        commit_df,
+        project=project,
+        start=start,
+        end=end,
+        start_inclusive=start_inclusive,
+        end_inclusive=end_inclusive,
+    )
+    if grouped.empty:
+        return 0.0
+    return _compute_service_coupling(grouped, service_a, service_b)
+
+
+def getCoupling(
+    project: str,
+    commit_df: pd.DataFrame,
+    time_from: str,
+    time_to: str,
+    service_a: str,
+    service_b: str,
+) -> float:
+    start = pd.to_datetime(time_from, utc=True)
+    end = pd.to_datetime(time_to, utc=True)
+    return _compute_coupling_for_pair(
+        commit_df,
+        project=project,
+        service_a=service_a,
+        service_b=service_b,
+        start=start,
+        end=end,
+        start_inclusive=True,
+        end_inclusive=False,
+    )
+
+
+def getCoupling_BetweenDate(
+    project: str,
+    commit_df: pd.DataFrame,
+    time_from: str,
+    time_to: str,
+    service_a: str,
+    service_b: str,
+) -> float:
+    start = pd.to_datetime(time_from, utc=True)
+    end = pd.to_datetime(time_to, utc=True)
+    return _compute_coupling_for_pair(
+        commit_df,
+        project=project,
+        service_a=service_a,
+        service_b=service_b,
+        start=start,
+        end=end,
+        start_inclusive=False,
+        end_inclusive=True,
+    )
+
+
+def makeHeatmapdataset(
+    project: str,
+    commit_df: pd.DataFrame,
+    cutoff_time: str,
+    output_path: str | Path,
+) -> Path:
+    end = pd.to_datetime(cutoff_time, utc=True)
+    grouped = _prepare_coupling_dataframe(
+        commit_df,
+        project=project,
+        end=end,
+        end_inclusive=True,
+    )
+    services = sorted(grouped["service"].unique()) if not grouped.empty else []
+    heatmap = pd.DataFrame(0.0, index=services, columns=services, dtype=float)
+
+    for i, service_a in enumerate(services):
+        for j, service_b in enumerate(services[i:], start=i):
+            coupling = _compute_service_coupling(grouped, service_a, service_b)
+            heatmap.loc[service_a, service_b] = coupling
+            heatmap.loc[service_b, service_a] = coupling
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    heatmap.to_csv(output)
+    return output
+
+
 def makeHeatmapdatasetBetweenDate(
     project: str,
     commit_df: pd.DataFrame,
@@ -353,31 +539,25 @@ def makeHeatmapdatasetBetweenDate(
     end_date: str,
     output_path: str | Path,
 ) -> Path:
-    df = commit_df.copy()
-    df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
     start = pd.to_datetime(start_date, utc=True)
     end = pd.to_datetime(end_date, utc=True)
-    mask = (
-        (df["project"] == project)
-        & (df["author_date"] >= start)
-        & (df["author_date"] <= end)
-        & df["service"].notna()
+    grouped = _prepare_coupling_dataframe(
+        commit_df,
+        project=project,
+        start=start,
+        end=end,
+        start_inclusive=False,
+        end_inclusive=True,
     )
-    df = df.loc[mask, ["commit_sha", "service"]]
 
-    services = sorted(df["service"].unique())
-    heatmap = pd.DataFrame(0, index=services, columns=services, dtype=int)
+    services = sorted(grouped["service"].unique()) if not grouped.empty else []
+    heatmap = pd.DataFrame(0.0, index=services, columns=services, dtype=float)
 
-    for commit_sha, group in df.groupby("commit_sha"):
-        service_set = sorted(set(group["service"]))
-        if not service_set:
-            continue
-        for service in service_set:
-            heatmap.loc[service, service] += 1
-        for i, service_a in enumerate(service_set):
-            for service_b in service_set[i + 1 :]:
-                heatmap.loc[service_a, service_b] += 1
-                heatmap.loc[service_b, service_a] += 1
+    for i, service_a in enumerate(services):
+        for j, service_b in enumerate(services[i:], start=i):
+            coupling = _compute_service_coupling(grouped, service_a, service_b)
+            heatmap.loc[service_a, service_b] = coupling
+            heatmap.loc[service_b, service_a] = coupling
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -390,9 +570,7 @@ def compute_oc_from_heatmap(heatmap: pd.DataFrame) -> float:
         return 0.0
     if heatmap.shape[0] <= 1:
         return 0.0
-    mask = np.triu(np.ones(heatmap.shape, dtype=bool), k=1)
-    upper_triangle = heatmap.where(mask)
-    total = upper_triangle.sum().sum()
+    total = heatmap.to_numpy(dtype=float).sum()
     n = heatmap.shape[0]
     return float(total) / (n * (n - 1) / 2)
 
@@ -410,8 +588,11 @@ __all__ = [
     "MissingGithubTokenError",
     "compute_oc_from_heatmap",
     "compute_oc_value",
+    "getCoupling",
+    "getCoupling_BetweenDate",
     "furtherCrawlCommits",
     "getCommitTablebyProject",
+    "makeHeatmapdataset",
     "makeHeatmapdatasetBetweenDate",
     "map_files_to_services",
 ]
