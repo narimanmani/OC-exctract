@@ -139,65 +139,64 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
             week_start = week_end + pd.Timedelta(days=1)
 
-        if repo.lower() == "spinnaker/spinnaker":
-            print("  Computing per-commit OC values for Spinnaker ...")
-            repo_commits = commit_service_df.copy()
-            repo_commits["author_date"] = pd.to_datetime(
-                repo_commits["author_date"], errors="coerce", utc=True
+        print("  Computing per-commit OC values ...")
+        repo_commits = commit_service_df.copy()
+        repo_commits["author_date"] = pd.to_datetime(
+            repo_commits["author_date"], errors="coerce", utc=True
+        )
+        repo_commits = repo_commits.loc[repo_commits["project"] == repo]
+
+        start = overall_start
+        end = overall_end
+
+        repo_commits = repo_commits.loc[
+            repo_commits["author_date"].between(start, end, inclusive="both")
+            | repo_commits["author_date"].isna()
+        ]
+
+        for commit_sha, group in repo_commits.groupby("commit_sha"):
+            commit_services = sorted(
+                {
+                    service
+                    for service in group["service"].dropna()
+                    if isinstance(service, str) and service.strip()
+                }
             )
-            repo_commits = repo_commits.loc[repo_commits["project"] == repo]
-
-            start = overall_start
-            end = overall_end
-
-            repo_commits = repo_commits.loc[
-                repo_commits["author_date"].between(start, end, inclusive="both")
-                | repo_commits["author_date"].isna()
-            ]
-
-            for commit_sha, group in repo_commits.groupby("commit_sha"):
-                commit_services = sorted(
-                    {
-                        service
-                        for service in group["service"].dropna()
-                        if isinstance(service, str) and service.strip()
-                    }
+            if commit_services:
+                heatmap = pd.DataFrame(
+                    0, index=commit_services, columns=commit_services, dtype=int
                 )
-                if commit_services:
-                    heatmap = pd.DataFrame(
-                        0, index=commit_services, columns=commit_services, dtype=int
-                    )
-                    for service in commit_services:
-                        heatmap.loc[service, service] += 1
-                    for idx, service_a in enumerate(commit_services):
-                        for service_b in commit_services[idx + 1 :]:
-                            heatmap.loc[service_a, service_b] += 1
-                            heatmap.loc[service_b, service_a] += 1
-                    oc_value = compute_oc_from_heatmap(heatmap)
-                else:
-                    heatmap = pd.DataFrame()
-                    oc_value = 0.0
+                for service in commit_services:
+                    heatmap.loc[service, service] += 1
+                for idx, service_a in enumerate(commit_services):
+                    for service_b in commit_services[idx + 1 :]:
+                        heatmap.loc[service_a, service_b] += 1
+                        heatmap.loc[service_b, service_a] += 1
+                oc_value = compute_oc_from_heatmap(heatmap)
+            else:
+                heatmap = pd.DataFrame()
+                oc_value = 0.0
 
-                commit_date = group["author_date"].dropna()
-                commit_date_str = (
-                    commit_date.iloc[0].strftime("%Y-%m-%dT%H:%M:%SZ")
-                    if not commit_date.empty
-                    else ""
-                )
+            commit_date = group["author_date"].dropna()
+            commit_date_str = (
+                commit_date.iloc[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not commit_date.empty
+                else ""
+            )
 
-                heatmap_csv = heatmap_dir / f"{repo_safe}_commit_{commit_sha}.csv"
-                heatmap.to_csv(heatmap_csv)
+            heatmap_csv = heatmap_dir / f"{repo_safe}_commit_{commit_sha}.csv"
+            heatmap.to_csv(heatmap_csv)
 
-                commit_results.append(
-                    {
-                        "project": repo,
-                        "commit_sha": commit_sha,
-                        "author_date": commit_date_str,
-                        "oc_value": oc_value,
-                        "heatmap": str(heatmap_csv),
-                    }
-                )
-                print(f"    commit {commit_sha}: OC value {oc_value:.4f}")
+            commit_results.append(
+                {
+                    "project": repo,
+                    "commit_sha": commit_sha,
+                    "author_date": commit_date_str,
+                    "oc_value": oc_value,
+                    "heatmap": str(heatmap_csv),
+                }
+            )
+            print(f"    commit {commit_sha}: OC value {oc_value:.4f}")
 
     summary_path = output_dir / "oc_weekly_summary.csv"
     summary_df = pd.DataFrame(
@@ -255,7 +254,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 f"({len(commit_summary_df) - len(preview)} additional rows not shown)",
             )
     else:
-        print("No per-commit OC values were generated for Spinnaker within the selected range.")
+        print("No per-commit OC values were generated within the selected range.")
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
