@@ -72,9 +72,6 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-from __future__ import annotations
-
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -98,8 +95,7 @@ else:
 print("Weekly OC summary preview:")
 print(body)
 
-summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
-with summary_file.open("a", encoding="utf-8") as fh:
+with open(Path("${GITHUB_STEP_SUMMARY}"), "a", encoding="utf-8") as fh:
     fh.write("## Weekly OC Summary\n\n")
     fh.write(body)
 PY
