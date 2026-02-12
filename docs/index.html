@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OC Pipeline Runner</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>OC Pipeline GitHub Runner</h1>
+      <p>
+        Use this page to dispatch <code>run-oc-pipeline.yml</code>, monitor the latest run,
+        view logs, and download generated artifacts.
+      </p>
+
+      <section class="card">
+        <h2>Configuration</h2>
+        <form id="runner-form">
+          <label>
+            GitHub Owner
+            <input id="owner" type="text" required placeholder="your-org-or-user" />
+          </label>
+
+          <label>
+            Repository
+            <input id="repo" type="text" required placeholder="OC-exctract" />
+          </label>
+
+          <label>
+            Workflow file
+            <input id="workflow" type="text" value="run-oc-pipeline.yml" required />
+          </label>
+
+          <label>
+            Branch / ref
+            <input id="ref" type="text" value="main" required />
+          </label>
+
+          <label>
+            Personal Access Token (classic/fine-grained)
+            <input id="token" type="password" required placeholder="ghp_... / github_pat_..." />
+          </label>
+
+          <label>
+            Start date
+            <input id="start-date" type="date" required />
+          </label>
+
+          <label>
+            End date
+            <input id="end-date" type="date" required />
+          </label>
+
+          <label>
+            Environment name (optional)
+            <input id="environment-name" type="text" value="OC" />
+          </label>
+
+          <div class="actions">
+            <button type="submit">Run Pipeline</button>
+            <button id="refresh-run" type="button">Refresh Latest Run</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <p id="status" class="status">Ready.</p>
+        <div id="run-meta"></div>
+      </section>
+
+      <section class="card">
+        <h2>Workflow logs</h2>
+        <p class="hint">Shows direct links to run logs (GitHub serves downloadable compressed logs via API).</p>
+        <pre id="logs" class="logs">No logs yet.</pre>
+      </section>
+
+      <section class="card">
+        <h2>Artifacts</h2>
+        <ul id="artifacts" class="artifact-list">
+          <li>No artifacts yet.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
