@@ -55,10 +55,38 @@ async function githubRequest(config, endpoint, options = {}) {
   return response;
 }
 
-async function getLatestRun(config) {
+async function resolveWorkflow(config) {
+  const response = await githubRequest(config, `/repos/${config.owner}/${config.repo}/actions/workflows?per_page=100`);
+  const data = await response.json();
+  const workflows = data.workflows || [];
+  const target = config.workflow.toLowerCase();
+
+  const match = workflows.find((wf) => {
+    if (!wf) return false;
+    const candidates = [String(wf.id), wf.name, wf.path?.split('/').pop(), wf.path]
+      .filter(Boolean)
+      .map((v) => v.toLowerCase());
+    return candidates.includes(target);
+  });
+
+  if (!match) {
+    throw new Error(
+      `Workflow '${config.workflow}' was not found. Confirm the workflow file exists in .github/workflows and that your token can read Actions metadata.`,
+    );
+  }
+
+  return match;
+}
+
+async function getRepo(config) {
+  const response = await githubRequest(config, `/repos/${config.owner}/${config.repo}`);
+  return response.json();
+}
+
+async function getLatestRun(config, workflowId) {
   const response = await githubRequest(
     config,
-    `/repos/${config.owner}/${config.repo}/actions/workflows/${encodeURIComponent(config.workflow)}/runs?per_page=5`,
+    `/repos/${config.owner}/${config.repo}/actions/workflows/${workflowId}/runs?per_page=5`,
   );
   const data = await response.json();
   return data.workflow_runs?.[0] || null;
@@ -93,12 +121,11 @@ async function renderLogs(config, runId) {
     return;
   }
 
-  const logsResponse = await githubRequest(
-    config,
-    `/repos/${config.owner}/${config.repo}/actions/jobs/${firstJob.id}/logs`,
-  );
-  const logText = await logsResponse.text();
-  logsEl.textContent = logText || 'No log output available yet.';
+  logsEl.textContent = [
+    'GitHub returns job logs as a compressed download from the browser API.',
+    'Open the run in GitHub to stream logs live, or use artifacts once available.',
+    `Run URL: ${firstJob.html_url}`,
+  ].join('\n');
 }
 
 async function downloadArtifact(config, artifact) {
@@ -148,6 +175,18 @@ async function renderArtifacts(config, runId) {
   }
 }
 
+async function validateConfig(config) {
+  const [repoData, workflow] = await Promise.all([getRepo(config), resolveWorkflow(config)]);
+
+  if (!config.ref) {
+    const refInput = document.getElementById('ref');
+    refInput.value = repoData.default_branch;
+    config.ref = repoData.default_branch;
+  }
+
+  return { repoData, workflow };
+}
+
 async function refreshLatestRun() {
   const config = getConfig();
   if (!config.owner || !config.repo || !config.workflow || !config.token) {
@@ -156,7 +195,8 @@ async function refreshLatestRun() {
   }
 
   setStatus('Fetching latest run...');
-  const run = await getLatestRun(config);
+  const { workflow } = await validateConfig(config);
+  const run = await getLatestRun(config, workflow.id);
   renderRunMeta(run);
 
   if (!run) {
@@ -176,8 +216,15 @@ form.addEventListener('submit', async (event) => {
   const config = getConfig();
 
   try {
+    setStatus('Validating repository and workflow...');
+    const { repoData, workflow } = await validateConfig(config);
+
+    if (!config.ref) {
+      config.ref = repoData.default_branch;
+    }
+
     setStatus('Dispatching workflow...');
-    await githubRequest(config, `/repos/${config.owner}/${config.repo}/actions/workflows/${encodeURIComponent(config.workflow)}/dispatches`, {
+    await githubRequest(config, `/repos/${config.owner}/${config.repo}/actions/workflows/${workflow.id}/dispatches`, {
       method: 'POST',
       body: JSON.stringify({
         ref: config.ref,
@@ -193,7 +240,7 @@ form.addEventListener('submit', async (event) => {
     const startedAt = Date.now();
     let run = null;
     while (Date.now() - startedAt < 90000) {
-      run = await getLatestRun(config);
+      run = await getLatestRun(config, workflow.id);
       if (run && run.id !== lastRunId) {
         break;
       }
@@ -201,7 +248,7 @@ form.addEventListener('submit', async (event) => {
     }
 
     if (!run) {
-      throw new Error('Workflow was dispatched, but no new run appeared within 90 seconds.');
+      throw new Error('Workflow was dispatched, but no new run appeared within 90 seconds. Verify the selected ref and open Actions in GitHub.');
     }
 
     lastRunId = run.id;

@@ -56,14 +56,14 @@ This repo now includes a GitHub Pages front-end in `docs/` that lets users:
 1. Trigger `run-oc-pipeline.yml` using workflow dispatch.
 2. View the latest workflow run metadata.
 3. Fetch and display job logs.
-4. Download workflow artifacts (`oc-results`) as ZIP files.
+4. Download workflow artifacts (`oc-results`) as ZIP files (and open direct run links for live logs).
 
 ### Setup
 
 1. In repository settings, enable **Pages** using **GitHub Actions** as the source.
 2. Ensure `MY_PAT` is configured in the target repository (or environment such as `OC`).
 3. Open the deployed Pages URL.
-4. Fill in owner/repo/ref/date range and provide a PAT in the form.
+4. Fill in owner/repo/ref/date range and provide a PAT in the form. The UI resolves workflow IDs automatically (by file/name/id) to avoid common 404 issues.
    * PAT requirements:
      * `actions:write` to dispatch workflows.
      * `actions:read` to read logs and list artifacts.
