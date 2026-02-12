@@ -1,0 +1,92 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  background: #111827;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+input,
+button {
+  border-radius: 0.5rem;
+  border: 1px solid #475569;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.95rem;
+}
+
+button {
+  background: #2563eb;
+  color: #eff6ff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+.actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.status {
+  font-weight: 600;
+}
+
+.logs {
+  min-height: 180px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.hint {
+  margin-top: 0;
+  opacity: 0.85;
+}
+
+.artifact-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+small {
+  opacity: 0.85;
+}

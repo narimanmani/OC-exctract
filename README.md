@@ -49,6 +49,28 @@ To run it:
 1. Add the secret `MY_PAT` in the repository settings. You can either store it as a regular repository secret or attach it to a GitHub environment (the workflow defaults to an environment named `OC`).
 2. Trigger the **Run OC Pipeline** workflow from the *Actions* tab. If you are using a differently named environment, supply it via the `environment_name` input when starting the workflow.
 
+## GitHub Pages UI (Run + Logs + Downloads)
+
+This repo now includes a GitHub Pages front-end in `docs/` that lets users:
+
+1. Trigger `run-oc-pipeline.yml` using workflow dispatch.
+2. View the latest workflow run metadata.
+3. Fetch and display job logs.
+4. Download workflow artifacts (`oc-results`) as ZIP files.
+
+### Setup
+
+1. In repository settings, enable **Pages** using **GitHub Actions** as the source.
+2. Ensure `MY_PAT` is configured in the target repository (or environment such as `OC`).
+3. Open the deployed Pages URL.
+4. Fill in owner/repo/ref/date range and provide a PAT in the form.
+   * PAT requirements:
+     * `actions:write` to dispatch workflows.
+     * `actions:read` to read logs and list artifacts.
+     * `contents:read` to resolve workflow metadata.
+
+The deployment workflow is `.github/workflows/deploy-github-pages.yml` and publishes everything under `docs/`.
+
 ## Notes
 
 * The GitHub API is rate limited. The crawler automatically retries when it encounters rate limit responses and sleeps for a short duration between requests.
