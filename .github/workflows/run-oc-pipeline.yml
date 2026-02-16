@@ -64,6 +64,18 @@ jobs:
             ls -al artifacts
             exit 1
           fi
+          if [ -f artifacts/service_mapping_used.csv ]; then
+            echo "::notice::service_mapping_used.csv saved to artifacts/service_mapping_used.csv"
+          else
+            echo "::error::service_mapping_used.csv was not generated"
+            ls -al artifacts
+            exit 1
+          fi
+          if [ -f artifacts/run_metadata.json ]; then
+            echo "::notice::run_metadata.json saved to artifacts/run_metadata.json"
+          else
+            echo "::warning::run_metadata.json was not generated"
+          fi
           ls -1 artifacts
 
       - name: Append weekly OC summary to job summary
@@ -84,8 +96,22 @@ jobs:
               body = "_No weekly OC values were generated for the selected date range._\n"
           else:
               preview_rows = 20
-              df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
-              preview = df.head(preview_rows)
+              if "oc_value" in df.columns:
+                  df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
+
+              preferred_columns = [
+                  "project",
+                  "week_start",
+                  "week_end",
+                  "oc_value",
+                  "heatmap",
+                  "active_devs",
+                  "cross_service_devs",
+                  "avg_services_per_dev",
+                  "switch_count_total",
+              ]
+              visible_columns = [col for col in preferred_columns if col in df.columns]
+              preview = df[visible_columns].head(preview_rows)
               table = preview.to_markdown(index=False)
               if len(df) > len(preview):
                   footer = f"\nShowing first {len(preview)} of {len(df)} rows.\n"
@@ -105,6 +131,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: oc-results
+          name: oc-results-${{ github.event.inputs.start_date }}-to-${{ github.event.inputs.end_date }}
           path: artifacts
           if-no-files-found: warn

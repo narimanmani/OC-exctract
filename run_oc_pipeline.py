@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
-
-import requests
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import requests
 
 from organizationalCoupling import (
     GithubConfig,
@@ -20,6 +23,8 @@ from organizationalCoupling import (
     makeHeatmapdatasetBetweenDate,
     map_files_to_services,
 )
+
+UNMAPPED_SERVICE = "__unmapped__"
 
 
 def _parse_repo(url: str) -> str:
@@ -33,11 +38,170 @@ def _parse_repo(url: str) -> str:
     return url.split("github.com/")[-1]
 
 
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else None
+    if value is None:
+        return None
+    if pd.isna(value):
+        return None
+    return str(value).strip() or None
+
+
+def _slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "service"
+
+
+def _derive_service_name(path_prefix: str) -> str:
+    parts = [part for part in path_prefix.strip("/").split("/") if part]
+    return parts[-1] if parts else "unclassified"
+
+
+def _normalize_service_mapping(service_mapping_path: str | Path) -> pd.DataFrame:
+    raw = pd.read_csv(service_mapping_path)
+    rows: List[Dict[str, str]] = []
+    for row in raw.to_dict(orient="records"):
+        path_prefix = _coerce_optional_str(
+            row.get("root_path_prefix", row.get("path_prefix", ""))
+        ) or ""
+        service_name = _coerce_optional_str(row.get("service_name"))
+        if service_name is None:
+            service_name = _derive_service_name(path_prefix)
+        service_id = _coerce_optional_str(row.get("service_id"))
+        if service_id is None:
+            if service_name:
+                service_id = _slugify(service_name)
+            else:
+                service_id = _slugify(_derive_service_name(path_prefix))
+
+        rows.append(
+            {
+                "service_id": service_id,
+                "service_name": service_name,
+                "root_path_prefix": path_prefix,
+            }
+        )
+
+    mapping_df = pd.DataFrame(rows, columns=["service_id", "service_name", "root_path_prefix"])
+    mapping_df = mapping_df.sort_values(
+        by=["root_path_prefix", "service_name", "service_id"],
+        key=lambda col: col.map(lambda value: "" if pd.isna(value) else str(value)),
+    )
+    mapping_df = mapping_df.assign(_prefix_len=mapping_df["root_path_prefix"].map(len))
+    mapping_df = mapping_df.sort_values(
+        by=["_prefix_len", "root_path_prefix", "service_name", "service_id"],
+        ascending=[False, True, True, True],
+    ).drop(columns=["_prefix_len"])
+    return mapping_df.reset_index(drop=True)
+
+
+def write_service_mapping_used(service_mapping_path: str | Path, output_path: str | Path) -> Path:
+    mapping_df = _normalize_service_mapping(service_mapping_path)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    mapping_df.to_csv(output, index=False)
+    return output
+
+
 def load_repo_list(path: Path) -> List[str]:
     df = pd.read_csv(path)
     if "github_url" not in df.columns:
         raise ValueError("`github_url` column not found in repo list")
     return [_parse_repo(url) for url in df["github_url"].dropna().tolist()]
+
+
+def _build_developer_identity(row: pd.Series) -> Optional[str]:
+    email = _coerce_optional_str(row.get("author_email"))
+    if email:
+        return email
+
+    for key in ["author_login", "github_login", "login", "username", "author_name", "name"]:
+        value = _coerce_optional_str(row.get(key))
+        if value:
+            return value
+    return None
+
+
+def _compute_weekly_socio_technical_metrics(
+    commit_df: pd.DataFrame,
+    *,
+    project: str,
+    week_start: pd.Timestamp,
+    week_end: pd.Timestamp,
+) -> Dict[str, float]:
+    scoped = commit_df.copy()
+    scoped["author_date"] = pd.to_datetime(scoped["author_date"], errors="coerce", utc=True)
+    scoped = scoped.loc[scoped["project"] == project].copy()
+    scoped["developer"] = scoped.apply(_build_developer_identity, axis=1)
+    scoped = scoped.loc[
+        scoped["author_date"].between(week_start, week_end, inclusive="both")
+    ].copy()
+
+    commit_level = (
+        scoped.sort_values(["author_date", "commit_sha"])
+        .groupby("commit_sha", as_index=False)
+        .agg(author_date=("author_date", "first"), developer=("developer", "first"))
+    )
+    active_devs = int(commit_level["developer"].dropna().nunique())
+
+    mapped_rows = scoped.loc[
+        scoped["developer"].notna()
+        & scoped["service"].notna()
+        & (scoped["service"] != UNMAPPED_SERVICE)
+    ].copy()
+
+    if mapped_rows.empty:
+        return {
+            "active_devs": active_devs,
+            "cross_service_devs": 0,
+            "avg_services_per_dev": 0.0,
+            "switch_count_total": 0,
+        }
+
+    services_per_dev = mapped_rows.groupby("developer")["service"].nunique()
+    cross_service_devs = int((services_per_dev >= 2).sum())
+    avg_services_per_dev = float(services_per_dev.mean()) if not services_per_dev.empty else 0.0
+
+    commit_service_counts = (
+        mapped_rows.groupby(["commit_sha", "developer", "author_date", "service"], dropna=False)
+        .size()
+        .reset_index(name="file_count")
+    )
+    dominant_service = (
+        commit_service_counts.sort_values(
+            ["commit_sha", "file_count", "service"],
+            ascending=[True, False, True],
+        )
+        .groupby(["commit_sha", "developer", "author_date"], as_index=False)
+        .first()
+    )
+
+    switch_count_total = 0
+    for _, dev_group in dominant_service.groupby("developer"):
+        sequence = dev_group.sort_values(["author_date", "commit_sha"])["service"].tolist()
+        switch_count_total += sum(
+            1
+            for idx in range(1, len(sequence))
+            if sequence[idx] != sequence[idx - 1]
+        )
+
+    return {
+        "active_devs": active_devs,
+        "cross_service_devs": cross_service_devs,
+        "avg_services_per_dev": round(avg_services_per_dev, 3),
+        "switch_count_total": int(switch_count_total),
+    }
+
+
+def _get_git_sha() -> str:
+    try:
+        return (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], text=True)
+            .strip()
+        )
+    except Exception:
+        return "unknown"
 
 
 def run_pipeline(args: argparse.Namespace) -> None:
@@ -73,6 +237,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     commits_full_dir.mkdir(parents=True, exist_ok=True)
     commits_service_dir.mkdir(parents=True, exist_ok=True)
     heatmap_dir.mkdir(parents=True, exist_ok=True)
+
+    service_mapping_used_path = output_dir / "service_mapping_used.csv"
+    write_service_mapping_used(args.service_mapping, service_mapping_used_path)
 
     weekly_results = []
     commit_results = []
@@ -127,6 +294,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
             makeHeatmapdatasetBetweenDate(repo, commit_service_df, week_start_str, week_end_str, heatmap_csv)
             oc_value = compute_oc_value(heatmap_csv)
+            weekly_metrics = _compute_weekly_socio_technical_metrics(
+                commit_service_df,
+                project=repo,
+                week_start=week_start,
+                week_end=week_end,
+            )
             weekly_results.append(
                 {
                     "project": repo,
@@ -134,9 +307,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     "week_end": week_end_str,
                     "oc_value": oc_value,
                     "heatmap": str(heatmap_csv),
+                    **weekly_metrics,
                 }
             )
-            print(f"    {week_start_str} to {week_end_str}: OC value {oc_value:.4f}")
+            print(
+                f"    {week_start_str} to {week_end_str}: OC value {oc_value:.4f}; "
+                f"active_devs={weekly_metrics['active_devs']}; "
+                f"cross_service_devs={weekly_metrics['cross_service_devs']}; "
+                f"switch_count_total={weekly_metrics['switch_count_total']}"
+            )
 
             week_start = week_end + pd.Timedelta(days=1)
 
@@ -160,7 +339,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 {
                     service
                     for service in group["service"].dropna()
-                    if isinstance(service, str) and service.strip()
+                    if isinstance(service, str) and service.strip() and service != UNMAPPED_SERVICE
                 }
             )
             if commit_services:
@@ -226,10 +405,32 @@ def run_pipeline(args: argparse.Namespace) -> None:
     summary_path = output_dir / "oc_weekly_summary.csv"
     summary_df = pd.DataFrame(
         weekly_results,
-        columns=["project", "week_start", "week_end", "oc_value", "heatmap"],
+        columns=[
+            "project",
+            "week_start",
+            "week_end",
+            "oc_value",
+            "heatmap",
+            "active_devs",
+            "cross_service_devs",
+            "avg_services_per_dev",
+            "switch_count_total",
+        ],
     )
+    summary_df = summary_df.sort_values(["week_start", "project"], ascending=[True, True]).reset_index(drop=True)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_df.to_csv(summary_path, index=False)
+
+    run_metadata = {
+        "start_date": args.start_date,
+        "end_date": args.end_date,
+        "repo_list_path": args.repo_list,
+        "service_mapping_path": args.service_mapping,
+        "git_sha": _get_git_sha(),
+        "run_timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    metadata_path = output_dir / "run_metadata.json"
+    metadata_path.write_text(json.dumps(run_metadata, indent=2), encoding="utf-8")
 
     if summary_path.exists():
         print(
