@@ -318,7 +318,7 @@ def _assign_service(filename: str, mapping: List[Tuple[str, str]]) -> Optional[s
     for prefix, service in mapping:
         if not prefix:
             return service
-    return None
+    return "__unmapped__"
 
 
 def map_files_to_services(
@@ -336,7 +336,7 @@ def map_files_to_services(
             services.append(None)
             continue
         if project not in mapping:
-            services.append(None)
+            services.append("__unmapped__")
             continue
         services.append(_assign_service(str(filename), mapping[project]))
     commit_details["service"] = services
@@ -366,7 +366,7 @@ def _prepare_coupling_dataframe(
 ) -> pd.DataFrame:
     df = commit_df.copy()
     df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
-    mask = (df["project"] == project) & df["service"].notna()
+    mask = (df["project"] == project) & df["service"].notna() & (df["service"] != "__unmapped__")
     if start is not None:
         if start_inclusive:
             mask &= df["author_date"] >= start
