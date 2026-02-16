@@ -212,6 +212,8 @@ def furtherCrawlCommits(
         "project",
         "commit_sha",
         "author_email",
+        "author_login",
+        "author_name",
         "author_date",
         "file_sha",
         "filename",
@@ -234,6 +236,7 @@ def furtherCrawlCommits(
             )
             commit_info = response.json()
             author = commit_info.get("commit", {}).get("author", {})
+            github_author = commit_info.get("author") or {}
             files = commit_info.get("files", [])
             if not files:
                 writer.writerow(
@@ -241,6 +244,8 @@ def furtherCrawlCommits(
                         projectfullname,
                         sha,
                         author.get("email"),
+                        github_author.get("login"),
+                        author.get("name"),
                         author.get("date"),
                         None,
                         None,
@@ -258,6 +263,8 @@ def furtherCrawlCommits(
                             projectfullname,
                             sha,
                             author.get("email"),
+                            github_author.get("login"),
+                            author.get("name"),
                             author.get("date"),
                             file_info.get("sha"),
                             file_info.get("filename"),
@@ -293,17 +300,29 @@ def _coerce_optional_str(value: Any) -> Optional[str]:
     return str(value)
 
 
-def _load_service_mapping(path: str | Path) -> Dict[str, List[Tuple[str, str]]]:
+def normalize_service_mapping(path: str | Path) -> pd.DataFrame:
     df = pd.read_csv(path)
+    if "root_path_prefix" in df.columns and "path_prefix" not in df.columns:
+        df = df.rename(columns={"root_path_prefix": "path_prefix"})
+    for required_column in ("service_name", "path_prefix"):
+        if required_column not in df.columns:
+            raise ValueError(f"`{required_column}` column not found in service mapping")
+    if "project" not in df.columns:
+        df = df.assign(project="*")
+    return df
+
+
+def _load_service_mapping(path: str | Path) -> Dict[str, List[Tuple[str, str]]]:
+    df = normalize_service_mapping(path)
     mapping: Dict[str, List[Tuple[str, str]]] = {}
     for row in df.itertuples(index=False):
         project = _coerce_optional_str(getattr(row, "project"))
         service_name = _coerce_optional_str(getattr(row, "service_name"))
-        if project is None or service_name is None:
+        if service_name is None:
             # Skip rows missing the required identifiers.
             continue
         path_prefix = _coerce_optional_str(getattr(row, "path_prefix", "")) or ""
-        mapping.setdefault(project, []).append((path_prefix, service_name))
+        mapping.setdefault(project or "*", []).append((path_prefix, service_name))
     # Sort prefixes so that longer (more specific) prefixes are matched first.
     for project, entries in mapping.items():
         entries.sort(key=lambda entry: len(entry[0]), reverse=True)
@@ -330,15 +349,15 @@ def map_files_to_services(
     commit_details = commit_details.copy()
     services: List[Optional[str]] = []
     for row in commit_details.itertuples(index=False):
-        project = getattr(row, "project")
+        project = _coerce_optional_str(getattr(row, "project"))
         filename = getattr(row, "filename", None)
         if filename is None or (isinstance(filename, float) and pd.isna(filename)):
             services.append(None)
             continue
-        if project not in mapping:
-            services.append(None)
-            continue
-        services.append(_assign_service(str(filename), mapping[project]))
+        project_mapping = mapping.get(project or "", [])
+        default_mapping = mapping.get("*", [])
+        matched_service = _assign_service(str(filename), project_mapping) or _assign_service(str(filename), default_mapping)
+        services.append(matched_service if matched_service is not None else "__unmapped__")
     commit_details["service"] = services
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -366,7 +385,7 @@ def _prepare_coupling_dataframe(
 ) -> pd.DataFrame:
     df = commit_df.copy()
     df["author_date"] = pd.to_datetime(df["author_date"], errors="coerce", utc=True)
-    mask = (df["project"] == project) & df["service"].notna()
+    mask = (df["project"] == project) & df["service"].notna() & (df["service"] != "__unmapped__")
     if start is not None:
         if start_inclusive:
             mask &= df["author_date"] >= start
@@ -595,4 +614,5 @@ __all__ = [
     "makeHeatmapdataset",
     "makeHeatmapdatasetBetweenDate",
     "map_files_to_services",
+    "normalize_service_mapping",
 ]
