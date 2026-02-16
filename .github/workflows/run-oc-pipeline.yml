@@ -1,6 +1,7 @@
 name: Run OC Pipeline
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       start_date:
@@ -19,10 +20,12 @@ on:
 jobs:
   oc-pipeline:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment_name }}
+    environment: ${{ github.event.inputs.environment_name || 'OC' }}
     env:
       MY_PAT: ${{ secrets.MY_PAT }}
       PYTHONUNBUFFERED: "1"
+      START_DATE: ${{ github.event.inputs.start_date || '2025-04-01' }}
+      END_DATE: ${{ github.event.inputs.end_date || '2025-10-30' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,15 +48,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "::notice::Preparing to run the OC pipeline"
-          echo "Start date: ${{ github.event.inputs.start_date }}"
-          echo "End date:   ${{ github.event.inputs.end_date }}"
+          echo "Start date: ${START_DATE}"
+          echo "End date:   ${END_DATE}"
           mkdir -p artifacts
           echo "::group::OC pipeline live output"
           stdbuf -oL -eL python -u run_oc_pipeline.py \
             --repo-list OldData/filtered_lang_perc.csv \
             --service-mapping EsoccExt/service_mapping.csv \
-            --start-date ${{ github.event.inputs.start_date }} \
-            --end-date ${{ github.event.inputs.end_date }} \
+            --start-date ${START_DATE} \
+            --end-date ${END_DATE} \
             --output-dir artifacts | tee artifacts/oc_pipeline.log
           echo "::endgroup::"
           if [ -f artifacts/oc_weekly_summary.csv ]; then
@@ -63,6 +66,18 @@ jobs:
             echo "Contents of artifacts directory:"
             ls -al artifacts
             exit 1
+          fi
+          if [ -f artifacts/service_mapping_used.csv ]; then
+            echo "::notice::Service mapping snapshot saved to artifacts/service_mapping_used.csv"
+          else
+            echo "::error::Service mapping snapshot was not generated"
+            ls -al artifacts
+            exit 1
+          fi
+          if [ -f artifacts/run_metadata.json ]; then
+            echo "::notice::Run metadata saved to artifacts/run_metadata.json"
+          else
+            echo "::warning::Run metadata file was not generated"
           fi
           ls -1 artifacts
 
@@ -84,8 +99,26 @@ jobs:
               body = "_No weekly OC values were generated for the selected date range._\n"
           else:
               preview_rows = 20
-              df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
-              preview = df.head(preview_rows)
+              if "oc_value" in df.columns:
+                  df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
+              if "avg_services_per_dev" in df.columns:
+                  df["avg_services_per_dev"] = df["avg_services_per_dev"].map(lambda v: f"{float(v):.3f}")
+
+              preferred_columns = [
+                  "project",
+                  "week_start",
+                  "week_end",
+                  "oc_value",
+                  "heatmap",
+                  "active_devs",
+                  "cross_service_devs",
+                  "avg_services_per_dev",
+                  "switch_count_total",
+              ]
+              available_columns = [col for col in preferred_columns if col in df.columns]
+              remaining_columns = [col for col in df.columns if col not in available_columns]
+              preview = df[available_columns + remaining_columns].head(preview_rows)
+
               table = preview.to_markdown(index=False)
               if len(df) > len(preview):
                   footer = f"\nShowing first {len(preview)} of {len(df)} rows.\n"
@@ -105,6 +138,6 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: oc-results
+          name: oc-results-${{ env.START_DATE }}-to-${{ env.END_DATE }}
           path: artifacts
           if-no-files-found: warn
