@@ -78,7 +78,9 @@ def compute_oc(raw,repository,components,anchor,out):
 def main():
     ap=argparse.ArgumentParser();ap.add_argument("--system",required=True);args=ap.parse_args()
     manifest=json.loads(Path("experiment/manifest.json").read_text())
-    case=next(x for x in manifest["systems"] if x["repository"]==args.system)
+    case=next((x for x in manifest["systems"] if x["repository"]==args.system),None)
+    if case is None:
+        ap.error("Repository is held or excluded by the Java-only scope: "+args.system)
     out=ROOT/"artifacts"/args.system.replace("/","_");out.mkdir(parents=True,exist_ok=True)
     status=dict(repository=args.system,phase="fresh_extraction_pilot",status="started",full_experiment_complete=False,source_history_complete=False,service_boundaries_validated=False,snapshots=[],failures=[],cimet_base_sha=manifest["cimet_base_sha"],oc_base_sha=manifest["oc_base_sha"])
     save(out/"run_status.json",status)

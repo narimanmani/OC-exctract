@@ -1,0 +1,68 @@
+{
+  "scope_version": "1.1",
+  "date": "2026-11-07",
+  "active_java_candidates": [
+    "geoserver/geoserver-cloud",
+    "camunda/camunda",
+    "adorsys/xs2a",
+    "apache/inlong",
+    "apolloconfig/apollo"
+  ],
+  "held_java_cases": [
+    {
+      "repository": "eclipse-kapua/kapua",
+      "language_scope": "Java",
+      "reason": "Pinned extractor does not support the required JAX-RS API patterns.",
+      "gate": "framework_coverage"
+    },
+    {
+      "repository": "pravega/pravega",
+      "language_scope": "Java",
+      "reason": "Java/JAX-RS component coverage and deployable-service boundaries remain unsupported.",
+      "gate": "framework_and_service_boundaries"
+    },
+    {
+      "repository": "OpenLiberty/liberty-bikes",
+      "language_scope": "Java_backends_with_separate_frontend",
+      "reason": "Java backend services use JAX-RS; the upstream pilot detected no supported operations.",
+      "gate": "framework_coverage"
+    },
+    {
+      "repository": "eclipse-hono/hono",
+      "language_scope": "Java",
+      "reason": "Message-based and framework-specific interfaces are outside the demonstrated extraction coverage.",
+      "gate": "protocol_and_framework_coverage"
+    },
+    {
+      "repository": "hmcts/ccpay-payment-app",
+      "language_scope": "Java",
+      "reason": "Repository appears to represent one deployable service; cross-service OC applicability needs confirmation. Latest pilot snapshot also failed.",
+      "gate": "cross_service_scope_and_parser"
+    }
+  ],
+  "excluded_primary_cases": [
+    {
+      "repository": "spinnaker/spinnaker",
+      "reason": "Production backend mixes Java and Groovy; excluded from the Java-only primary cohort. Retained as an original-study reference.",
+      "evidence": "https://github.com/spinnaker/spinnaker/tree/75977c719278414a23af66f8d98daffba0dc18df/gate/gate-web/src/main/groovy"
+    },
+    {
+      "repository": "OpenLMIS/openlmis-contract-tests",
+      "reason": "Contract-test repository rather than the backend system implementation; excluded for repository scope, not language.",
+      "evidence": "https://github.com/OpenLMIS/openlmis-contract-tests/blob/5abab0176ed82ce73b471cd0a86ddf0c6de3e4b6/README.md"
+    }
+  ],
+  "original_case_count": 12,
+  "active_candidate_count": 5,
+  "held_java_case_count": 5,
+  "excluded_primary_case_count": 2,
+  "actual_new_measurements": false,
+  "measurement_gates_remaining": [
+    "historical_java_backend_and_deployable_service_inventory",
+    "generated_and_inherited_endpoint_coverage",
+    "Camunda_parser_failure",
+    "full_weekly_extraction",
+    "matched_models_and_Granger_replication",
+    "independent_architectural_review"
+  ]
+}

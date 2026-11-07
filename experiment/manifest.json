@@ -8,88 +8,116 @@
     "2025-06-02T00:00:00Z",
     "2026-11-02T00:00:00Z"
   ],
-  "active_era_extra_anchors": {
-    "pravega/pravega": [
-      "2016-11-28T00:00:00Z",
-      "2018-05-21T00:00:00Z"
-    ],
-    "OpenLiberty/liberty-bikes": [
-      "2018-06-11T00:00:00Z",
-      "2019-12-09T00:00:00Z"
-    ]
-  },
+  "active_era_extra_anchors": {},
   "systems": [
-    {
-      "repository": "spinnaker/spinnaker",
-      "branch": "main",
-      "freeze_candidate_sha": "75977c719278414a23af66f8d98daffba0dc18df",
-      "service_boundaries_validated": false
-    },
     {
       "repository": "geoserver/geoserver-cloud",
       "branch": "main",
       "freeze_candidate_sha": "ce6eeb08b761de819bbb0f6b42f79e2acc19d6b2",
-      "service_boundaries_validated": false
+      "service_boundaries_validated": false,
+      "implementation_language": "Java",
+      "language_scope_validated": false,
+      "framework_coverage_validated": false,
+      "primary_prediction_eligible": false
     },
     {
       "repository": "camunda/camunda",
       "branch": "main",
       "freeze_candidate_sha": "9501133e3481cd112463c22c2d7d0dbc052438e8",
-      "service_boundaries_validated": false
-    },
-    {
-      "repository": "eclipse-kapua/kapua",
-      "branch": "develop",
-      "freeze_candidate_sha": "21fc47ccf0ce3622bff7365a1b9fc936797f6f3f",
-      "service_boundaries_validated": false
+      "service_boundaries_validated": false,
+      "implementation_language": "Java",
+      "language_scope_validated": false,
+      "framework_coverage_validated": false,
+      "primary_prediction_eligible": false
     },
     {
       "repository": "adorsys/xs2a",
       "branch": "support-22.x",
       "freeze_candidate_sha": "2603384ef166699b138c1511c39d14f950633737",
-      "service_boundaries_validated": false
-    },
-    {
-      "repository": "pravega/pravega",
-      "branch": "master",
-      "freeze_candidate_sha": "3142a01075bfae78d66588e46ff87e6e10225744",
-      "service_boundaries_validated": false
-    },
-    {
-      "repository": "hmcts/ccpay-payment-app",
-      "branch": "master",
-      "freeze_candidate_sha": "bff646ec1bc1378c5a9ca4e46495506da6a56390",
-      "service_boundaries_validated": false
-    },
-    {
-      "repository": "OpenLiberty/liberty-bikes",
-      "branch": "main",
-      "freeze_candidate_sha": "c0f296a56780aa184a20f3f51b32879856ecb115",
-      "service_boundaries_validated": false
-    },
-    {
-      "repository": "OpenLMIS/openlmis-contract-tests",
-      "branch": "master",
-      "freeze_candidate_sha": "5abab0176ed82ce73b471cd0a86ddf0c6de3e4b6",
-      "service_boundaries_validated": false
+      "service_boundaries_validated": false,
+      "implementation_language": "Java",
+      "language_scope_validated": false,
+      "framework_coverage_validated": false,
+      "primary_prediction_eligible": false
     },
     {
       "repository": "apache/inlong",
       "branch": "master",
       "freeze_candidate_sha": "13c437946fcf503aa5d9c5cb7d9e3ae135e1911b",
-      "service_boundaries_validated": false
+      "service_boundaries_validated": false,
+      "implementation_language": "Java",
+      "language_scope_validated": false,
+      "framework_coverage_validated": false,
+      "primary_prediction_eligible": false
     },
     {
       "repository": "apolloconfig/apollo",
       "branch": "master",
       "freeze_candidate_sha": "0008c348ee3634fdab1c0bebcb6c475b44bd1d56",
-      "service_boundaries_validated": false
+      "service_boundaries_validated": false,
+      "implementation_language": "Java",
+      "language_scope_validated": false,
+      "framework_coverage_validated": false,
+      "primary_prediction_eligible": false
+    }
+  ],
+  "scope_version": "1.1",
+  "scope_updated_date": "2026-11-07",
+  "scope_policy": {
+    "primary_implementation_language": "Java",
+    "scope_unit": "Java-implemented backend service",
+    "frontend_language_affects_eligibility": false,
+    "non_java_production_backends": "exclude_from_primary_cohort",
+    "framework_is_not_language": true,
+    "service_language_and_boundaries_validation_required": true,
+    "oc_contributions": "All tracked contributions within validated eligible Java-service boundaries, including their configuration files; unrelated frontends and libraries excluded.",
+    "selection_basis": "Language, repository scope and demonstrated extractor support; no predictive-model performance was used.",
+    "current_cohort_status": "five_candidates_not_yet_validated_primary_cases",
+    "new_java_only_extraction_run_completed": false,
+    "previous_pilot_url": "https://github.com/narimanmani/OC-exctract/actions/runs/42340743237"
+  },
+  "held_java_cases": [
+    {
+      "repository": "eclipse-kapua/kapua",
+      "language_scope": "Java",
+      "reason": "Pinned extractor does not support the required JAX-RS API patterns.",
+      "gate": "framework_coverage"
+    },
+    {
+      "repository": "pravega/pravega",
+      "language_scope": "Java",
+      "reason": "Java/JAX-RS component coverage and deployable-service boundaries remain unsupported.",
+      "gate": "framework_and_service_boundaries"
+    },
+    {
+      "repository": "OpenLiberty/liberty-bikes",
+      "language_scope": "Java_backends_with_separate_frontend",
+      "reason": "Java backend services use JAX-RS; the upstream pilot detected no supported operations.",
+      "gate": "framework_coverage"
     },
     {
       "repository": "eclipse-hono/hono",
-      "branch": "master",
-      "freeze_candidate_sha": "e1c98bec09efad17203a5ca8b470763c7fb11294",
-      "service_boundaries_validated": false
+      "language_scope": "Java",
+      "reason": "Message-based and framework-specific interfaces are outside the demonstrated extraction coverage.",
+      "gate": "protocol_and_framework_coverage"
+    },
+    {
+      "repository": "hmcts/ccpay-payment-app",
+      "language_scope": "Java",
+      "reason": "Repository appears to represent one deployable service; cross-service OC applicability needs confirmation. Latest pilot snapshot also failed.",
+      "gate": "cross_service_scope_and_parser"
+    }
+  ],
+  "excluded_primary_cases": [
+    {
+      "repository": "spinnaker/spinnaker",
+      "reason": "Production backend mixes Java and Groovy; excluded from the Java-only primary cohort. Retained as an original-study reference.",
+      "evidence": "https://github.com/spinnaker/spinnaker/tree/75977c719278414a23af66f8d98daffba0dc18df/gate/gate-web/src/main/groovy"
+    },
+    {
+      "repository": "OpenLMIS/openlmis-contract-tests",
+      "reason": "Contract-test repository rather than the backend system implementation; excluded for repository scope, not language.",
+      "evidence": "https://github.com/OpenLMIS/openlmis-contract-tests/blob/5abab0176ed82ce73b471cd0a86ddf0c6de3e4b6/README.md"
     }
   ]
 }
