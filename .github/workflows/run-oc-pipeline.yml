@@ -4,107 +4,126 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "Start date (YYYY-MM-DD)"
+        description: "Study panel start (pilot anchor manifest is authoritative)"
         required: true
-        default: "2025-04-01"
+        default: "2023-12-04"
       end_date:
-        description: "End date (YYYY-MM-DD)"
+        description: "Last closed study day"
         required: true
-        default: "2025-10-30"
+        default: "2026-11-01"
       environment_name:
-        description: "GitHub environment that stores the MY_PAT secret"
+        description: "Compatibility input; pilot uses public Git without MY_PAT"
         required: false
         default: "OC"
 
+permissions:
+  contents: read
+
 jobs:
-  oc-pipeline:
+  build:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment_name }}
-    env:
-      MY_PAT: ${{ secrets.MY_PAT }}
-      PYTHONUNBUFFERED: "1"
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        shell: bash
+          distribution: temurin
+          java-version: '17'
+      - name: Validate Python syntax and prepare case matrix
+        id: plan
         run: |
-          set -euo pipefail
-          echo "::notice::Installing Python dependencies"
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run OC pipeline
-        shell: bash
+          python -m py_compile experiment/run_case.py experiment/aggregate.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          cases=json.loads(Path("experiment/manifest.json").read_text())["systems"]
+          matrix={"include":[{"repository":x["repository"],"artifact":x["repository"].replace("/","_")} for x in cases]}
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("matrix="+json.dumps(matrix)+"\n")
+          PY
+      - name: Build pinned CIMET with an explicit study adapter
         run: |
-          set -euo pipefail
-          echo "::notice::Preparing to run the OC pipeline"
-          echo "Start date: ${{ github.event.inputs.start_date }}"
-          echo "End date:   ${{ github.event.inputs.end_date }}"
-          mkdir -p artifacts
-          echo "::group::OC pipeline live output"
-          stdbuf -oL -eL python -u run_oc_pipeline.py \
-            --repo-list OldData/filtered_lang_perc.csv \
-            --service-mapping EsoccExt/service_mapping.csv \
-            --start-date ${{ github.event.inputs.start_date }} \
-            --end-date ${{ github.event.inputs.end_date }} \
-            --output-dir artifacts | tee artifacts/oc_pipeline.log
-          echo "::endgroup::"
-          if [ -f artifacts/oc_weekly_summary.csv ]; then
-            echo "::notice::Weekly OC summary saved to artifacts/oc_weekly_summary.csv"
-          else
-            echo "::error::Weekly OC summary was not generated"
-            echo "Contents of artifacts directory:"
-            ls -al artifacts
-            exit 1
-          fi
-          ls -1 artifacts
-
-      - name: Append weekly OC summary to job summary
-        if: ${{ hashFiles('artifacts/oc_weekly_summary.csv') != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
+          git clone https://github.com/cloudhubs/cimet.git cimet
+          git -C cimet checkout --detach 15cfacb6f5b357d0b61b59a6184b19a41bf11741
+          mkdir -p cimet/src/main/java/study
+          cp experiment/FreshStudyRunner.java cimet/src/main/java/study/FreshStudyRunner.java
           python - <<'PY'
           from pathlib import Path
-          import os
-
-          import pandas as pd
-
-          summary_path = Path("artifacts/oc_weekly_summary.csv")
-          df = pd.read_csv(summary_path)
-
-          if df.empty:
-              body = "_No weekly OC values were generated for the selected date range._\n"
-          else:
-              preview_rows = 20
-              df["oc_value"] = df["oc_value"].map(lambda v: f"{v:.4f}")
-              preview = df.head(preview_rows)
-              table = preview.to_markdown(index=False)
-              if len(df) > len(preview):
-                  footer = f"\nShowing first {len(preview)} of {len(df)} rows.\n"
-              else:
-                  footer = "\n"
-              body = table + footer
-
-          print("Weekly OC summary preview:")
-          print(body)
-
-          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
-          with summary_file.open("a", encoding="utf-8") as fh:
-              fh.write("## Weekly OC Summary\n\n")
-              fh.write(body)
+          p=Path("cimet/pom.xml")
+          p.write_text(p.read_text().replace("<version>RELEASE</version>","<version>5.10.2</version>"))
           PY
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          mvn -B -q -f cimet/pom.xml package -Dmaven.test.skip=true -DmainClass=study.FreshStudyRunner
+          mkdir -p toolkit
+          cp cimet/target/cimet-1.0-SNAPSHOT-jar-with-dependencies.jar toolkit/
+          java -cp toolkit/cimet-1.0-SNAPSHOT-jar-with-dependencies.jar study.FreshStudyRunner --self-test toolkit/cimet-fixtures.json
+          git -C cimet diff > toolkit/cimet-build.patch
+          sha256sum toolkit/*.jar experiment/* > toolkit/source-and-jar-sha256.txt
+          java -version 2> toolkit/java-version.txt
+          mvn -version > toolkit/maven-version.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
-          name: oc-results
-          path: artifacts
+          name: pinned-cimet-toolkit
+          path: toolkit
+          retention-days: 7
           if-no-files-found: warn
+
+  cases:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pinned-cimet-toolkit
+          path: toolkit
+      - name: Install pinned pilot dependencies
+        run: |
+          python -m pip install -r experiment/requirements.txt
+          mkdir -p artifacts
+          python -m pip freeze > artifacts/python-dependencies.txt
+      - name: Fresh case extraction
+        env:
+          CASE_REPOSITORY: ${{ matrix.repository }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python experiment/run_case.py --system "$CASE_REPOSITORY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: fresh-pilot-${{ matrix.artifact }}
+          path: artifacts
+          retention-days: 7
+          if-no-files-found: warn
+
+  summary:
+    if: always() && needs.build.result == 'success'
+    needs: [build, cases]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: fresh-pilot-*
+          path: pilot-results
+      - name: Summarize every available case report
+        run: python experiment/aggregate.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fresh-pilot-summary
+          path: pilot-summary
+          retention-days: 7

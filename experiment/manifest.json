@@ -1,0 +1,95 @@
+{
+  "phase": "fresh_extraction_pilot",
+  "full_experiment_complete": false,
+  "cimet_base_sha": "15cfacb6f5b357d0b61b59a6184b19a41bf11741",
+  "oc_base_sha": "dd6420908659d5bb52794f9a59b1f34cdde17c2a",
+  "pilot_anchors": [
+    "2024-06-03T00:00:00Z",
+    "2025-06-02T00:00:00Z",
+    "2026-11-02T00:00:00Z"
+  ],
+  "active_era_extra_anchors": {
+    "pravega/pravega": [
+      "2016-11-28T00:00:00Z",
+      "2018-05-21T00:00:00Z"
+    ],
+    "OpenLiberty/liberty-bikes": [
+      "2018-06-11T00:00:00Z",
+      "2019-12-09T00:00:00Z"
+    ]
+  },
+  "systems": [
+    {
+      "repository": "spinnaker/spinnaker",
+      "branch": "main",
+      "freeze_candidate_sha": "75977c719278414a23af66f8d98daffba0dc18df",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "geoserver/geoserver-cloud",
+      "branch": "main",
+      "freeze_candidate_sha": "ce6eeb08b761de819bbb0f6b42f79e2acc19d6b2",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "camunda/camunda",
+      "branch": "main",
+      "freeze_candidate_sha": "9501133e3481cd112463c22c2d7d0dbc052438e8",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "eclipse-kapua/kapua",
+      "branch": "develop",
+      "freeze_candidate_sha": "21fc47ccf0ce3622bff7365a1b9fc936797f6f3f",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "adorsys/xs2a",
+      "branch": "support-22.x",
+      "freeze_candidate_sha": "2603384ef166699b138c1511c39d14f950633737",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "pravega/pravega",
+      "branch": "master",
+      "freeze_candidate_sha": "3142a01075bfae78d66588e46ff87e6e10225744",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "hmcts/ccpay-payment-app",
+      "branch": "master",
+      "freeze_candidate_sha": "bff646ec1bc1378c5a9ca4e46495506da6a56390",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "OpenLiberty/liberty-bikes",
+      "branch": "main",
+      "freeze_candidate_sha": "c0f296a56780aa184a20f3f51b32879856ecb115",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "OpenLMIS/openlmis-contract-tests",
+      "branch": "master",
+      "freeze_candidate_sha": "5abab0176ed82ce73b471cd0a86ddf0c6de3e4b6",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "apache/inlong",
+      "branch": "master",
+      "freeze_candidate_sha": "13c437946fcf503aa5d9c5cb7d9e3ae135e1911b",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "apolloconfig/apollo",
+      "branch": "master",
+      "freeze_candidate_sha": "0008c348ee3634fdab1c0bebcb6c475b44bd1d56",
+      "service_boundaries_validated": false
+    },
+    {
+      "repository": "eclipse-hono/hono",
+      "branch": "master",
+      "freeze_candidate_sha": "e1c98bec09efad17203a5ca8b470763c7fb11294",
+      "service_boundaries_validated": false
+    }
+  ]
+}
