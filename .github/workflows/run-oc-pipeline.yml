@@ -59,7 +59,7 @@ jobs:
           cp cimet/target/cimet-1.0-SNAPSHOT-jar-with-dependencies.jar toolkit/
           java -cp toolkit/cimet-1.0-SNAPSHOT-jar-with-dependencies.jar study.FreshStudyRunner --self-test toolkit/cimet-fixtures.json
           git -C cimet diff > toolkit/cimet-build.patch
-          sha256sum toolkit/*.jar experiment/* > toolkit/source-and-jar-sha256.txt
+          sha256sum toolkit/*.jar experiment/*.java experiment/*.py experiment/*.json experiment/*.txt > toolkit/source-and-jar-sha256.txt
           java -version 2> toolkit/java-version.txt
           mvn -version > toolkit/maven-version.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

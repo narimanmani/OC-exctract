@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import numpy as np
 import pandas as pd
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import organizationalCoupling as oc
 
 ROOT=Path.cwd()
